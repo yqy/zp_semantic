@@ -14,7 +14,7 @@ from conf import *
 from buildTree import get_info_from_file
 from buildTree import get_info_from_file_system
 import get_dir
-#import get_feature
+import get_feature
 import word2vec
 import network
 
