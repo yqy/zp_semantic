@@ -131,11 +131,11 @@ class NetWork():
         self.zp_x_pre = T.matrix("zp_x_pre")
         self.zp_x_post = T.matrix("zp_x_post")
         
-        zp_nn_pre = GRU(embedding_dimention,n_hidden,self.zp_x_pre)
+        zp_nn_pre = LSTM(embedding_dimention,n_hidden,self.zp_x_pre)
         #zp_nn_pre = LSTM(embedding_dimention,n_hidden,self.zp_x_pre_dropout)
         self.params += zp_nn_pre.params
         
-        zp_nn_post = GRU(embedding_dimention,n_hidden,self.zp_x_post)
+        zp_nn_post = LSTM(embedding_dimention,n_hidden,self.zp_x_post)
         #zp_nn_post = LSTM(embedding_dimention,n_hidden,self.zp_x_post_dropout)
         self.params += zp_nn_post.params
 
@@ -164,21 +164,28 @@ class NetWork():
         self.mask_post = T.matrix("mask")
         self.mask_postc = T.matrix("mask")
     
-        self.np_nn_pre = sub_GRU_batch(embedding_dimention,n_hidden,self.np_x_pre,self.np_x_prec,self.mask_pre,self.mask_prec)
+        self.np_nn_pre = sub_LSTM_batch(embedding_dimention,n_hidden,self.np_x_pre,self.np_x_prec,self.mask_pre,self.mask_prec)
         self.params += self.np_nn_pre.params
-        self.np_nn_post = sub_GRU_batch(embedding_dimention,n_hidden,self.np_x_post,self.np_x_postc,self.mask_post,self.mask_postc)
+        self.np_nn_post = sub_LSTM_batch(embedding_dimention,n_hidden,self.np_x_post,self.np_x_postc,self.mask_post,self.mask_postc)
         self.params += self.np_nn_post.params
 
         self.np_nn_post_output = self.np_nn_post.nn_out
         self.np_nn_pre_output = self.np_nn_pre.nn_out
 
         self.np_out = T.concatenate((self.np_nn_post_output,self.np_nn_pre_output),axis=1)
-        self.get_np_out = theano.function(inputs=[self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc],outputs=[self.np_out])
 
         #self.NP_layer = Layer(n_hidden*3,n_hidden*2,self.np_out,repre_active) 
         #self.params += self.NP_layer.params
 
-        self.np_out_output = self.np_out
+        np_nn_f = LSTM(n_hidden*2,n_hidden*2,self.np_out)
+        self.params += np_nn_f.params
+        np_nn_b = LSTM(n_hidden*2,n_hidden*2,self.np_out[::-1])
+        self.params += np_nn_b.params
+
+        self.bi_np_out = T.concatenate((np_nn_f.all_hidden,np_nn_b.all_hidden[::-1]),axis=1)
+
+        self.np_out_output = self.bi_np_out
+        self.get_np_out = theano.function(inputs=[self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc],outputs=[self.np_out_output])
 
         w_attention_zp,b_attention = init_weight(n_hidden*2,1,pre="attention_zp",ones=False) 
         self.params += [w_attention_zp,b_attention]
@@ -186,10 +193,18 @@ class NetWork():
         w_attention_np,b_u = init_weight(n_hidden*2,1,pre="attention_np",ones=False) 
         self.params += [w_attention_np]
 
+        w_attention_np_rnn,b_u = init_weight(n_hidden*4,1,pre="attention_np_rnn",ones=False) 
+        self.params += [w_attention_np_rnn]
+
+
         #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np) + T.dot(self.zp_out_output,w_attention_zp) + T.dot(self.feature_layer.output,w_attention_feature) + b_attention)
-        self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np) + T.dot(self.zp_out_output,w_attention_zp) + b_attention)
+        #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np_rnn) + T.dot(self.zp_out_output,w_attention_zp) + T.dot(self.np_out,w_attention_np) + b_attention)
+        #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np_rnn) + T.dot(self.zp_out_output,w_attention_zp) + b_attention)
 
         self.attention = softmax(T.transpose(self.calcu_attention,axes=(1,0)))[0]
+
+        #self.attention = softmax((self.np_out_output*self.zp_out_output).sum(axis=1))
+
         #self.get_attention = theano.function(inputs=[self.zp_x_pre,self.zp_x_post,self.np_x,self.np_x_pre,self.np_x_post,self.mask,self.mask_pre,self.mask_post,self.feature],outputs=[self.attention])
 
         self.out = self.attention
@@ -569,6 +584,8 @@ class LSTM_batch():
 
 
 
+
+
 class GRU():
     def __init__(self,n_in,n_hidden,x=None,prefix=""):
          
@@ -614,7 +631,6 @@ class GRU():
         h_t = (1-fz)*h_t_1 + fz*h_new
 
         return h_t
-
 
 
 class GRU_batch():
@@ -749,7 +765,7 @@ class sub_GRU_batch():
                        non_sequences = [wz_x,wz_h,bz,wr_x,wr_h,br,wc_x,wc_h,bc])
 
         hc,rc = theano.scan(self.recurrent_fn, sequences = [nxc,nmaskc],
-                       outputs_info = [h_t_0],
+                       outputs_info = [h_t_0_c],
                        non_sequences = [wz_x,wz_h,bz,wr_x,wr_h,br,wc_x,wc_h,bc])
 
         self.all_hiddenx = T.transpose(h,axes=(1,0,2))
@@ -759,6 +775,119 @@ class sub_GRU_batch():
         self.nn_outc = hc[-1]
 
         self.nn_out = h[-1] - hc[-1]
+
+    def recurrent_fn(self,x,mask,h_t_1,wz_x,wz_h,bz,wr_x,wr_h,br,wc_x,wc_h,bc):
+        fz = sigmoid(T.dot(h_t_1,wz_h) + T.dot(x,wz_x) + bz)
+
+        fr = sigmoid(T.dot(h_t_1,wr_h) + T.dot(x,wr_x) + br)
+
+        h_new = tanh(T.dot(x,wc_x) + T.dot( (fr*h_t_1) ,wc_h) + bc)
+
+        h_t_this = (1-fz)*h_t_1 + fz*h_new
+
+        h_t = mask[:, None] * h_t_this + (1. - mask)[:, None] * h_t_1
+
+        return h_t
+
+class sub_LSTM_batch():
+    def __init__(self,n_in,n_hidden,x=T.tensor3("x"),xc=T.tensor3("xc"),mask=T.matrix("mask"),maskc=T.matrix("maskx"),prefix=""):
+         
+        self.params = []
+        if x is not None:
+            self.x = x
+        else:
+            self.x = T.tensor3("x")
+        if xc is not None:
+            self.xc = xc
+        else:
+            self.xc = T.tensor3("xc")
+
+
+        if mask is not None:
+            self.mask = mask
+        else:
+            self.mask = T.matrix("mask")
+        if maskc is not None:
+            self.maskc = maskc
+        else:
+            self.maskc = T.matrix("maskc")
+
+        #### 转置 为了进行scan运算 ###
+    
+        nmask = T.transpose(self.mask,axes=(1,0))
+        nx = T.transpose(self.x,axes=(1,0,2))
+
+        nmaskc = T.transpose(self.maskc,axes=(1,0))
+        nxc = T.transpose(self.xc,axes=(1,0,2))
+
+
+        wf_x,bf = init_weight(n_in,n_hidden,pre="%s_lstm_f_x_"%prefix) 
+        self.params += [wf_x,bf]
+
+        wi_x,bi = init_weight(n_in,n_hidden,pre="%s_lstm_i_x_"%prefix) 
+        self.params += [wi_x,bi]
+
+        wc_x,bc = init_weight(n_in,n_hidden,pre="%s_lstm_c_x_"%prefix) 
+        self.params += [wc_x,bc]
+
+        wo_x,bo = init_weight(n_in,n_hidden,pre="%s_lstm_o_x_"%prefix) 
+        self.params += [wo_x,bo]
+
+
+        wf_h,b_h = init_weight(n_hidden,n_hidden,pre="%s_lstm_f_h_"%prefix)
+        self.params += [wf_h]     
+
+        wi_h,b_h = init_weight(n_hidden,n_hidden,pre="%s_lstm_i_h_"%prefix)
+        self.params += [wi_h]     
+
+        wc_h,b_h = init_weight(n_hidden,n_hidden,pre="%s_lstm_c_h_"%prefix)
+        self.params += [wc_h]     
+
+        wo_h,b_h = init_weight(n_hidden,n_hidden,pre="%s_lstm_o_h_"%prefix)
+        self.params += [wo_h]     
+
+        #h_t_0 = T.alloc(np.array(0.,dtype=np.float64), x.shape[0], n_hidden)
+        #c_t_0 = T.alloc(np.array(0.,dtype=np.float64), x.shape[0], n_hidden)
+        h_t_0 = T.alloc(0., x.shape[0], n_hidden)
+        c_t_0 = T.alloc(0., x.shape[0], n_hidden)
+
+        h_t_0_c = T.alloc(0., xc.shape[0], n_hidden)
+        c_t_0_c = T.alloc(0., xc.shape[0], n_hidden)
+
+
+        [h,c],r = theano.scan(self.lstm_recurrent_fn, sequences = [nx,nmask],
+                       outputs_info = [h_t_0,c_t_0],
+                       non_sequences = [wf_x,wf_h,bf,wi_x,wi_h,bi,wc_h,wc_x,bc,wo_x,wo_h,bo])
+
+        [hc,cc],rc = theano.scan(self.lstm_recurrent_fn, sequences = [nxc,nmaskc],
+                       outputs_info = [h_t_0_c,c_t_0_c],
+                       non_sequences = [wf_x,wf_h,bf,wi_x,wi_h,bi,wc_h,wc_x,bc,wo_x,wo_h,bo])
+
+        self.all_hiddenx = T.transpose(h,axes=(1,0,2))
+        self.nn_outx = h[-1]
+
+        self.all_hiddenc = T.transpose(hc,axes=(1,0,2))
+        self.nn_outc = hc[-1]
+
+        self.nn_out = h[-1] - hc[-1]
+
+    def lstm_recurrent_fn(self,x,mask,h_t_1,c_t_1,wf_x,wf_h,bf,wi_x,wi_h,bi,wc_h,wc_x,bc,wo_x,wo_h,bo):
+        ft = sigmoid(T.dot(h_t_1,wf_h) + T.dot(x,wf_x) + bf) 
+
+        it = sigmoid(T.dot(h_t_1,wi_h) + T.dot(x,wi_x) + bi) 
+
+        ot = sigmoid(T.dot(h_t_1,wo_h) + T.dot(x,wo_x) + bo) 
+
+        ct_ = tanh(T.dot(h_t_1,wc_h) + T.dot(x,wc_x) + bc) 
+
+        c_t_this = ft*c_t_1 + it*ct_
+
+        h_t_this = ot*tanh(c_t_this)
+
+        c_t = mask[:, None] * c_t_this + (1. - mask)[:, None] * c_t_1
+        h_t = mask[:, None] * h_t_this + (1. - mask)[:, None] * h_t_1
+
+        return h_t,c_t
 
     def recurrent_fn(self,x,mask,h_t_1,wz_x,wz_h,bz,wr_x,wr_h,br,wc_x,wc_h,bc):
         fz = sigmoid(T.dot(h_t_1,wz_h) + T.dot(x,wz_x) + bz)
