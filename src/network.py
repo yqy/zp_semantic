@@ -187,6 +187,10 @@ class NetWork():
         self.np_out_output = self.bi_np_out
         self.get_np_out = theano.function(inputs=[self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc],outputs=[self.np_out_output])
 
+        self.feature = T.matrix("feature")
+        self.feature_layer = Layer(feature_dimention,n_hidden,self.feature,repre_active) 
+        self.params += self.feature_layer.params
+
         w_attention_zp,b_attention = init_weight(n_hidden*2,1,pre="attention_zp",ones=False) 
         self.params += [w_attention_zp,b_attention]
 
@@ -196,12 +200,15 @@ class NetWork():
         w_attention_np_rnn,b_u = init_weight(n_hidden*4,1,pre="attention_np_rnn",ones=False) 
         self.params += [w_attention_np_rnn]
 
+        w_attention_feature,b_u = init_weight(n_hidden,1,pre="attention_feature",ones=False) 
+        self.params += [w_attention_feature]
 
-        #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np) + T.dot(self.zp_out_output,w_attention_zp) + T.dot(self.feature_layer.output,w_attention_feature) + b_attention)
+
+        self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np_rnn) + T.dot(self.zp_out_output,w_attention_zp) + T.dot(self.np_out,w_attention_np) + T.dot(self.feature_layer.output,w_attention_feature) + b_attention)
         #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np_rnn) + T.dot(self.zp_out_output,w_attention_zp) + T.dot(self.np_out,w_attention_np) + b_attention)
         #self.calcu_attention = tanh(T.dot(self.np_out_output,w_attention_np_rnn) + T.dot(self.zp_out_output,w_attention_zp) + b_attention)
 
-        self.attention = softmax(T.transpose(self.calcu_attention,axes=(1,0)))[0]
+        #self.attention = softmax(T.transpose(self.calcu_attention,axes=(1,0)))[0]
 
         #self.attention = softmax((self.np_out_output*self.zp_out_output).sum(axis=1))
 
@@ -210,7 +217,7 @@ class NetWork():
         self.out = self.attention
         #self.out = self.attention_hop_3_dropout
 
-        self.get_out = theano.function(inputs=[self.zp_x_pre,self.zp_x_post,self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc],outputs=[self.out],on_unused_input='warn')
+        self.get_out = theano.function(inputs=[self.zp_x_pre,self.zp_x_post,self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc,self.feature],outputs=[self.out],on_unused_input='warn')
 
         
         l1_norm_squared = sum([(w**2).sum() for w in self.params])
@@ -232,7 +239,7 @@ class NetWork():
 
         
         self.train_step = theano.function(
-            inputs=[self.zp_x_pre,self.zp_x_post,self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc,t,lr],
+            inputs=[self.zp_x_pre,self.zp_x_post,self.np_x_pre,self.np_x_prec,self.np_x_post,self.np_x_postc,self.mask_pre,self.mask_prec,self.mask_post,self.mask_postc,self.feature,t,lr],
             outputs=[cost],
             on_unused_input='warn',
             updates=updates)
