@@ -115,7 +115,8 @@ def get_inputs(w2v,nodes_info,sentence_index,begin_index,end_index,ty):
         tnl,twl = nodes_info[sentence_index]
         np_x_pre = []
         np_x_pre.append(list([0.0]*args.embedding_dimention))
-        for i in range(0,begin_index):
+        #for i in range(0,begin_index):
+        for i in range(begin_index-10,begin_index):
             if i >= 0 and i < len(twl):
                 em_x = w2v.get_vector_by_word_dl(twl[i].word)
                 if em_x is not None:
@@ -134,7 +135,8 @@ def get_inputs(w2v,nodes_info,sentence_index,begin_index,end_index,ty):
                 if em_x is not None:
                     np_x_post.append(list(em_x))
 
-        for i in range(end_index+1,len(twl)):
+        #for i in range(end_index+1,len(twl)):
+        for i in range(end_index+1,end_index+10):
             if i >= 0 and i < len(twl):
                 em_x = w2v.get_vector_by_word_dl(twl[i].word)
                 if em_x is not None:
@@ -150,14 +152,16 @@ def get_inputs(w2v,nodes_info,sentence_index,begin_index,end_index,ty):
 
         pre_zp_x = []
         pre_zp_x.append(list([0.0]*args.embedding_dimention))
-        for i in range(0,begin_index):
+        #for i in range(0,begin_index):
+        for i in range(begin_index-10,begin_index):
             if i >= 0 and i < len(twl):
                 em_x = w2v.get_vector_by_word_dl(twl[i].word)
                 if em_x is not None:
                     pre_zp_x.append(list(em_x))
 
         post_zp_x = []
-        for i in range(end_index+1,len(twl)):
+        #for i in range(end_index+1,len(twl)):
+        for i in range(end_index+1,end_index+10):
             if i >= 0 and i < len(twl):
                 em_x = w2v.get_vector_by_word_dl(twl[i].word)
                 if em_x is not None:
